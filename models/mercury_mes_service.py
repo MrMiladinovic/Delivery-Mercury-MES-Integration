@@ -27,47 +27,99 @@ class MercuryMessService(models.AbstractModel):
         For Zambia (ID 3): Return Country ID, State ID, City ID.
         For Other Countries: Return Country ID, State Name, City Name.
         """
-        # Simplified: Assume country code or name matches MES country name or you have a mapping
-        # For Zambia (ID 3), you need state and city IDs.
-        # For other countries, you might use names directly.
-
-        # You would ideally call getcountrystatecity API once and cache the results
-        # For prototype, let's assume you have a way to get these IDs or names
-        # This part requires careful mapping logic
-
-        # Placeholder logic (needs real implementation)
+        # --- Get Address IDs/Names ---
         country_id = partner.country_id
-        state_id = partner.state_id
-        city = partner.city
+        state_id = partner.state_id  # This is the res.country.state record (might be False/None for Zambia)
+        # Use partner.state_name or partner.state_id.name if state_id is not set, fallback to partner.state_id.name if state_id is a record
+        # The exact field name in res.partner for the free-text state might vary, check your Odoo version.
+        # Commonly, it's just accessed via state_id.name if state_id exists, or you might need to check partner.street2 or similar if it's misused.
+        # Let's assume state_id.name is the correct way if state_id is a record, and partner.state_id.name is the same thing.
+        # If state_id is False, we might need to look elsewhere or rely on manual entry in a standard field.
+        # Often, the state name typed in manually ends up in state_id.display_name or state_id.name if it's a record created on the fly,
+        # or it might just be missing from state_id entirely.
 
-        # --- Map Country ---
+        state_name = state_id.name if state_id else partner.state_id.name if partner.state_id else "" # Fallback chain
+        city_name = partner.city # City is usually straightforward
+
         mes_country_id = self._map_odoo_country_to_mes(country_id)
         if not mes_country_id:
-             raise UserError(_("Could not map Odoo country '%s' to MES country ID.") % (country_id.name if country_id else 'Unknown'))
+            raise UserError(_("Could not map Odoo country '%s' to MES country ID.") % (country_id.name if country_id else 'Unknown'))
 
         mes_state_id_or_name = ""
         mes_city_id_or_name = ""
 
         if mes_country_id == 3: # Zambia
             # --- Map State and City for Zambia ---
-            mes_state_id_or_name = self._map_odoo_state_to_mes_id(state_id)
-            if not mes_state_id_or_name:
-                 _logger.warning(f"Could not map Odoo state '{state_id.name if state_id else 'None'}' to MES state ID for Zambia. Using empty string.")
-                 # API might handle empty state ID or you might need a default
+            # Use state_id if it exists (unlikely for Zambia if dropdown isn't used)
+            # Otherwise, use the state name from the partner record.
+            # The key is to get the *name* that the user typed in.
+            # Let's assume state_id.name contains it if state_id is a record.
+            # If state_id is False, partner.state_id should also be False, so we need the name string.
+            # Check if state_id is a record and get its name, otherwise try to get the name string directly if Odoo stores it.
+            # Often, for countries without predefined states, Odoo just uses the name typed in the 'State' field.
+            # This might be accessible via partner.state_id.name if a record exists, or might require accessing a different field
+            # or even partner.street2 if misused. Standard practice is usually state_id.name.
 
-            mes_city_id_or_name = self._map_odoo_city_to_mes_id(city) # Assuming you map city name to ID
-            if not mes_city_id_or_name:
-                 _logger.warning(f"Could not map Odoo city '{city}' to MES city ID for Zambia. Using empty string.")
-                 # API might handle empty city ID or you might need a default
+            # Let's try a more robust way:
+            # 1. If state_id record exists, use its name.
+            # 2. If not, log a warning and potentially use partner.state_name if such a field exists (check Odoo model definition)
+            #    or assume the user needs to select/create a proper state record.
+
+            # Most reliable way within standard Odoo:
+            state_record_to_map = state_id # This is the res.country.state record or False
+            if not state_record_to_map and partner.state_id:
+                state_record_to_map = partner.state_id # Double-check
+
+            if state_record_to_map:
+                # Map using the record (even if it was created ad-hoc or manually linked)
+                mes_state_id_or_name = self._map_odoo_state_to_mes_id(state_record_to_map)
+            else:
+                # State record is missing. Log a warning.
+                # You could try to map the raw name if stored elsewhere, but standard is usually state_id.name
+                # If state_id is False, it's likely the user just typed the name and didn't select/create a record.
+                # This is the core of the problem.
+                _logger.warning(f"Odoo Partner {partner.name} (ID: {partner.id}) has no res.country.state record for Zambia. State mapping might fail.")
+                # Option 1: Try to find or create a state record based on the name typed.
+                # This is complex.
+                # Option 2: Assume the user needs to correctly set the State record (e.g., by selecting/creating 'Lusaka Province' record).
+                # Option 3: If you know the state name is typed into the 'State' field anyway, try to access that string.
+                # The 'State' field on the partner form usually populates partner.state_id.name if a record is linked,
+                # or might be stored in a related field if not.
+                # Let's assume for now that if state_id is False, we cannot reliably map it automatically.
+                # The user MUST select or create a proper res.country.state record for Zambia in Odoo.
+                # You might need to instruct users or create these records.
+                mes_state_id_or_name = "" # Cannot map automatically
+
+            # Ensure a state ID is found for Zambia, otherwise log and potentially raise an error or use default
+            if not mes_state_id_or_name:
+                _logger.error(f"Could not map Odoo state for Zambia partner {partner.name} (ID: {partner.id}). Ensure a valid Zambian state record (e.g., 'Lusaka Province') is selected in the partner address.")
+                # Depending on your requirements, you might raise an error here:
+                # raise UserError(_("Zambian address for partner '%s' is missing a valid State record. Please select or create a state like 'Lusaka Province'.") % partner.name)
+                # Or use a default (not recommended as it might be wrong):
+                # mes_state_id_or_name = "1" # Default to Lusaka ID - Risky!
+
+            if not mes_state_id_or_name:
+                # Final fallback attempt: If state_id is False, maybe the name is directly accessible.
+                # This is tricky. Standard Odoo usually puts the name in state_id.name if a record exists.
+                # If no record, the field might be empty or the name might be lost.
+                # Let's assume the user needs to create/select the record.
+                # Log the issue clearly.
+                _logger.warning(f"Could not determine MES State ID for Zambia partner {partner.name}. Partner State ID Record: {state_id}, Partner.state_id: {partner.state_id}. Ensure a Zambian state record is correctly linked in Odoo.")
+
+
+            # Now handle city mapping for Zambia
+            if not city_name:
+                _logger.warning(f"Odoo Partner {partner.name} (ID: {partner.id}) has no city set.")
+                mes_city_id_or_name = ""
+            else:
+                mes_city_id_or_name = self._map_odoo_city_to_mes_id(city_name) # Map city name to ID
+                if not mes_city_id_or_name:
+                    _logger.warning(f"Could not map Odoo city '{city_name}' to MES city ID for Zambia partner {partner.name}.")
 
         else:
             # --- Use Names for Non-Zambia ---
-            # For non-Zambia, use names for state and city as per API doc examples.
-            # Note: The API doc example for getfreight shows destination_city as "Lusaka" for South Africa (ID 142),
-            # which seems like a mistake, but the principle is likely state/city names for non-Zambia.
-            # Let's stick to names for non-Zambia.
-            mes_state_id_or_name = state_id.name if state_id else ""
-            mes_city_id_or_name = city if city else ""
+            mes_state_id_or_name = state_name if state_name else ""
+            mes_city_id_or_name = city_name if city_name else ""
 
         return mes_country_id, mes_state_id_or_name, mes_city_id_or_name
 
