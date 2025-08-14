@@ -382,15 +382,15 @@ class MercuryMessService(models.AbstractModel):
             "shipment_details": [{"paymenttype": payment_type}],
             "item_details": [item_details]
         }
+
         # --- Prepare API Parameters for Booking ---
         data_to_send = {
             'email': email,
             'private_key': private_key,
             'token_no': token_no, # Must be unique
-            # Send BOTH service IDs as per the successful pattern observed in getfreight (Code: 508)
-            # Even though Book Collection example (p. 8) shows only international_service,
-            # including both seems necessary to avoid Service ID mismatch (Code: 509).
-            'domestic_service': carrier.mercury_mes_default_domestic_service, # Use configured domestic service ID (e.g., 1)
+            # Based on the API documentation example for Book Collection (p. 8) and current error (509),
+            # send only the international_service parameter.
+            # The API should determine if it's domestic or international based on shipment data.
             'international_service': carrier.mercury_mes_default_international_service, # Use configured international service ID (e.g., 4 or 5)
             'insurance': "0", # Simplified, make configurable if needed
             'shipment': json.dumps([shipment_data]) # Wrap in list and convert to JSON string as per API example
