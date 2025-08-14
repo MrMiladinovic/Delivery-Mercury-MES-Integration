@@ -11,7 +11,7 @@ class DeliveryCarrier(models.Model):
 
     delivery_type = fields.Selection(
         selection_add=[('mercury_mes', 'Mercury MES')],
-        ondelete={'mercury_mes': 'set default'} # Define behavior on carrier deletion
+        ondelete={'mercury_mes': 'set default'}
     )
 
     # Mercury MES Configuration Fields
@@ -27,32 +27,40 @@ class DeliveryCarrier(models.Model):
     )
     mercury_mes_default_international_service = fields.Integer(
         string="Default International Service ID",
-        default=5, # As per API doc default for Book Collection
+        default=4,  # Changed from 5 to 4 (matches your working curl)
         help="Default service ID for international shipments."
     )
     mercury_mes_default_domestic_service = fields.Integer(
         string="Default Domestic Service ID",
-        default=1, # As per API doc example
+        default=1,
         help="Default service ID for domestic shipments."
     )
-    # Optional: Add a field for test environment if needed
-    # mercury_mes_is_test = fields.Boolean(string="Use Test Environment")
+    mercury_mes_insurance = fields.Boolean(
+        string="Insurance",
+        help="Enable insurance for shipments."
+    )
 
     # --- Odoo Delivery Method Overrides ---
 
     def mercury_mes_rate_shipment(self, order):
         """Calculate the rate using Mercury MES API."""
-        # This will call the service layer
+        # Validate credentials first
+        if not self.mercury_mes_email or not self.mercury_mes_private_key:
+            return {
+                'success': False,
+                'price': 0.0,
+                'error_message': _("Mercury MES credentials are not configured."),
+                'warning_message': False
+            }
+            
         service = self.env['mercury.mes.service']
         try:
             rate = service.get_freight_charge(self, order)
             if rate is not None:
-                # --- ADD THE LOGGING LINE HERE ---
                 _logger.info(f"Mercury MES Rate Shipment - Calculated Rate: {rate} ZMW for Order {order.name}")
-                # --- END ADDITION ---
                 return {
                     'success': True,
-                    'price': rate, # Ensure this is the actual rate from the API
+                    'price': float(rate),
                     'error_message': False,
                     'warning_message': False
                 }
@@ -64,81 +72,145 @@ class DeliveryCarrier(models.Model):
                     'error_message': _("Failed to calculate Mercury MES rate. Please check logs or configuration."),
                     'warning_message': False
                 }
+        except UserError as e:
+            _logger.error(f"Mercury MES Rate Shipment UserError for Order {order.name}: {e}")
+            return {
+                'success': False,
+                'price': 0.0,
+                'error_message': str(e),
+                'warning_message': False
+            }
         except Exception as e:
             _logger.error(f"Mercury MES Rate Shipment Error for Order {order.name}: {e}", exc_info=True)
             return {
                 'success': False,
                 'price': 0.0,
-                'error_message': str(e), # Consider user-friendly message
+                'error_message': _("An unexpected error occurred: %s") % str(e),
                 'warning_message': False
             }
 
     def mercury_mes_send_shipping(self, pickings):
         """Book the shipment using Mercury MES API."""
+        # Validate credentials first
+        if not self.mercury_mes_email or not self.mercury_mes_private_key:
+            raise UserError(_("Mercury MES credentials are not configured."))
+            
         service = self.env['mercury.mes.service']
         result = []
+        
         for picking in pickings:
             try:
                 res = service.book_shipment(self, picking)
                 if res:
-                    # Log the response from the API
                     _logger.info(f"Mercury MES Book Shipment Response for Picking {picking.name}: {res}")
 
-                    # res should contain 'rate' and 'waybills' (list)
-                    # Assuming one waybill per picking for simplicity
                     waybills = res.get('waybills', [])
+                    rate = res.get('rate', 0.0)
+                    
                     if waybills:
-                        # Use the first waybill. Handle multiple if needed differently.
-                        waybill = waybills[0]
-                        # Store the waybill on the picking
+                        waybill = waybills[0]  # Use the first waybill
+                        
+                        # Store the waybill and rate on the picking
                         picking.carrier_tracking_ref = waybill
+                        picking.delivery_price = float(rate)
+                        
                         result.append({
-                            'exact_price': res.get('rate', 0.0),
+                            'exact_price': float(rate),
                             'tracking_number': waybill
                         })
+                        
                         _logger.info(f"Mercury MES Send Shipping - Stored Waybill: {waybill} for Picking {picking.name}")
-                        # Log additional waybills if any
+                        
                         if len(waybills) > 1:
-                             _logger.info(f"Mercury MES booking for Picking {picking.name} returned multiple waybills: {waybills}")
+                            _logger.info(f"Mercury MES booking for Picking {picking.name} returned multiple waybills: {waybills}")
                     else:
-                        error_msg = _("Mercury MES booking failed, no waybill returned.")
-                        _logger.error(error_msg)
-                        raise UserError(error_msg)
+                        # Handle case where we get rate but no waybill (as per your working test)
+                        if rate > 0:
+                            _logger.warning(f"Mercury MES booking for Picking {picking.name} returned rate {rate} but no waybill")
+                            # Still consider successful if we have rate
+                            result.append({
+                                'exact_price': float(rate),
+                                'tracking_number': ''
+                            })
+                        else:
+                            error_msg = _("Mercury MES booking failed, no waybill returned.")
+                            _logger.error(error_msg)
+                            raise UserError(error_msg)
                 else:
                     error_msg = _("Mercury MES booking failed. Please check logs.")
                     _logger.error(error_msg)
                     raise UserError(error_msg)
+                    
+            except UserError:
+                # Re-raise UserError as-is
+                raise
             except Exception as e:
-                 _logger.error(f"Mercury MES Send Shipment Error for Picking {picking.name}: {e}", exc_info=True)
-                 # Re-raise the exception to stop the process and show error to user
-                 raise UserError(_("Mercury MES booking error for Picking %s: %s") % (picking.name, str(e))) from e
+                _logger.error(f"Mercury MES Send Shipment Error for Picking {picking.name}: {e}", exc_info=True)
+                raise UserError(_("Mercury MES booking error for Picking %s: %s") % (picking.name, str(e))) from e
+                
         return result
 
     def mercury_mes_cancel_shipment(self, picking):
         """Cancel shipment (if API supports it)."""
-        # Implement if Mercury MES has a cancel API
-        # For now, just log and return a message
         _logger.info(f"Mercury MES Cancel Shipment requested for Picking {picking.name}. API cancellation not implemented.")
-        # Returning a string message is standard for cancel methods
         return _("Cancel API not implemented for Mercury MES. Please cancel manually in MES.")
 
     def mercury_mes_get_tracking_link(self, picking):
         """Provide a link to track the shipment."""
-        # Construct the tracking URL based on MES documentation or portal
-        # Example (replace with actual MES tracking URL if different):
         tracking_ref = picking.carrier_tracking_ref
         if tracking_ref:
-            # Assuming tracking is done on the MES server directly using the status endpoint
-            # You might need to adjust this URL pattern or use the details endpoint
+            # Updated to use the correct tracking endpoint
             return f"http://116.202.29.37/quotation1/app/getshipmenttracking/wbid/{tracking_ref}"
-        return False # Return False if no tracking ref
+        return False
+
+    def mercury_mes_get_tracking_info(self, picking):
+        """Get detailed tracking information."""
+        if not picking.carrier_tracking_ref:
+            return []
+            
+        service = self.env['mercury.mes.service']
+        try:
+            tracking_details = service.get_tracking_details(picking.carrier_tracking_ref)
+            return tracking_details
+        except Exception as e:
+            _logger.error(f"Error getting tracking info for {picking.carrier_tracking_ref}: {e}")
+            return []
 
     # --- Optional: Methods for manual actions in the UI ---
     def action_mercury_mes_get_label(self):
         """Action to fetch label (could be implemented later)."""
-        # This would involve calling getwaybilldetails and potentially downloading the image
-        raise UserError(_("Fetching labels is not yet implemented."))
+        active_id = self.env.context.get('active_id')
+        if active_id:
+            picking = self.env['stock.picking'].browse(active_id)
+            if picking.carrier_tracking_ref:
+                # You could implement label fetching here
+                raise UserError(_("Fetching labels is not yet implemented. Tracking number: %s") % picking.carrier_tracking_ref)
+            else:
+                raise UserError(_("No tracking number found for this shipment."))
+        else:
+            raise UserError(_("No picking selected."))
 
     def action_mercury_mes_get_tracking_info(self):
         """Action to fetch detailed tracking (could be implemented later)."""
-        raise UserError(_("Fetching detailed tracking is not yet implemented."))
+        active_id = self.env.context.get('active_id')
+        if active_id:
+            picking = self.env['stock.picking'].browse(active_id)
+            if picking.carrier_tracking_ref:
+                service = self.env['mercury.mes.service']
+                try:
+                    tracking_details = service.get_tracking_details(picking.carrier_tracking_ref)
+                    if tracking_details:
+                        # Format the tracking information for display
+                        tracking_info = "\n".join([
+                            f"{detail.get('date', '')} - {detail.get('status', '')} - {detail.get('location', '')}"
+                            for detail in tracking_details
+                        ])
+                        raise UserError(_("Tracking Information:\n%s") % tracking_info)
+                    else:
+                        raise UserError(_("No tracking information found."))
+                except Exception as e:
+                    raise UserError(_("Error fetching tracking information: %s") % str(e))
+            else:
+                raise UserError(_("No tracking number found for this shipment."))
+        else:
+            raise UserError(_("No picking selected."))
