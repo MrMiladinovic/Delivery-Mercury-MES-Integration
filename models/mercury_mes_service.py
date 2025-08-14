@@ -26,7 +26,16 @@ class MercuryMessService(models.AbstractModel):
         """Map Odoo partner address to MES IDs/names."""
         country_id = partner.country_id
         state_id = partner.state_id
-        state_name = state_id.name if state_id else (partner.state_id.name if partner.state_id else "")
+        
+        # Better state name retrieval
+        state_name = ""
+        if state_id and state_id.name:
+            state_name = state_id.name
+        elif partner.state_id and partner.state_id.name:
+            state_name = partner.state_id.name
+        elif hasattr(partner, 'state_name') and partner.state_name:
+            state_name = partner.state_name
+        
         city_name = partner.city or ""
 
         mes_country_id = self._map_odoo_country_to_mes(country_id)
@@ -36,26 +45,40 @@ class MercuryMessService(models.AbstractModel):
         mes_state_id_or_name = ""
         mes_city_id_or_name = ""
 
-        if mes_country_id == 3:  # Zambia - Use IDs
-            # Map State and City for Zambia
+        _logger.info(f"Processing partner {partner.name}: Country={country_id.name if country_id else 'None'}, MES Country ID={mes_country_id}")
+
+        if mes_country_id == 3: # Zambia
+            _logger.info(f"Zambia address detected for {partner.name}")
+            # --- Map State and City for Zambia ---
             if state_id:
                 mes_state_id_or_name = self._map_odoo_state_to_mes_id(state_id)
+                _logger.info(f"Zambia state mapped: {state_id.name} -> {mes_state_id_or_name}")
             else:
-                mes_state_id_or_name = "1"  # Default to Lusaka
+                mes_state_id_or_name = "1" # Default to Lusaka
+                _logger.info(f"No state for Zambia partner {partner.name}, using default Lusaka (1)")
 
             # Handle city mapping for Zambia
             if not city_name:
-                mes_city_id_or_name = "1"  # Default to Lusaka
+                mes_city_id_or_name = "1" # Default to Lusaka
+                _logger.info(f"No city for Zambia partner {partner.name}, using default Lusaka (1)")
             else:
                 mes_city_id_or_name = self._map_odoo_city_to_mes_id(city_name)
                 if not mes_city_id_or_name:
-                    mes_city_id_or_name = "1"  # Default to Lusaka
+                    mes_city_id_or_name = "1" # Default to Lusaka
+                    _logger.info(f"City {city_name} not mapped for Zambia, using default Lusaka (1)")
+                else:
+                    _logger.info(f"Zambia city mapped: {city_name} -> {mes_city_id_or_name}")
 
-        else:  # Non-Zambia countries - Use Names
+        else:
+            _logger.info(f"Non-Zambia address detected for {partner.name}")
+            # --- Use Names for Non-Zambia ---
             mes_state_id_or_name = state_name if state_name else "Unknown State"
             mes_city_id_or_name = city_name if city_name else "Unknown City"
+            _logger.info(f"Non-Zambia mapping: State={mes_state_id_or_name}, City={mes_city_id_or_name}")
 
-        return mes_country_id, mes_state_id_or_name, mes_city_id_or_name
+        result = (str(mes_country_id), str(mes_state_id_or_name), str(mes_city_id_or_name))
+        _logger.info(f"Final mapping for {partner.name}: {result}")
+        return result
 
     def _map_odoo_country_to_mes(self, country_record):
         """ Map Odoo country to MES country ID. """
