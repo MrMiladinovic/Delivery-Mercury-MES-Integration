@@ -9,7 +9,8 @@
                 <!-- Target the sheet element inside the form -->
                 <xpath expr="//sheet" position="inside">
                     <!-- Add the Mercury MES group, make it visible only when delivery_type is 'mercury_mes' -->
-                    <group name="mercury_mes_config" string="Mercury MES Configuration" attrs="{'invisible': [('delivery_type', '!=', 'mercury_mes')]}">
+                    <!-- Use 'invisible' attribute instead of 'attrs' for Odoo 17+ -->
+                    <group name="mercury_mes_config" string="Mercury MES Configuration" invisible="delivery_type != 'mercury_mes'">
                         <field name="mercury_mes_email" />
                         <field name="mercury_mes_private_key" password="True"/>
                         <field name="mercury_mes_default_international_service" />
