@@ -14,14 +14,32 @@ class DeliveryCarrier(models.Model):
         ondelete={'mercury_mes': 'set default'} # Define behavior on carrier deletion
     )
 
-    mercury_mes_email = fields.Char(string="Mercury MES Email", groups='base.group_system')
-    mercury_mes_private_key = fields.Char(string="Mercury MES Private Key", groups='base.group.group_system')
-    mercury_mes_default_international_service = fields.Integer(string="Default International Service ID", default=5, help="Default service ID for international shipments.")
-    mercury_mes_default_domestic_service = fields.Integer(string="Default Domestic Service ID", default=1, help="Default service ID for domestic shipments.")
-    # Add fields for prod/test environment if needed
+    # Mercury MES Configuration Fields
+    mercury_mes_email = fields.Char(
+        string="Mercury MES Email",
+        groups='base.group_system',
+        help="Registered email address for Mercury MES API access."
+    )
+    mercury_mes_private_key = fields.Char(
+        string="Mercury MES Private Key",
+        groups='base.group_system',
+        help="Private key for Mercury MES API access."
+    )
+    mercury_mes_default_international_service = fields.Integer(
+        string="Default International Service ID",
+        default=5, # As per API doc default
+        help="Default service ID for international shipments."
+    )
+    mercury_mes_default_domestic_service = fields.Integer(
+        string="Default Domestic Service ID",
+        default=1, # As per API doc example
+        help="Default service ID for domestic shipments."
+    )
+    # Optional: Add a field for test environment if needed
     # mercury_mes_is_test = fields.Boolean(string="Use Test Environment")
 
-    # Override the method to get rate based on the selected delivery type
+    # --- Odoo Delivery Method Overrides ---
+
     def mercury_mes_rate_shipment(self, order):
         """Calculate the rate using Mercury MES API."""
         # This will call the service layer
@@ -36,7 +54,8 @@ class DeliveryCarrier(models.Model):
                     'warning_message': False
                 }
             else:
-                 # Error message should ideally come from the service layer
+                # Error message should ideally come from the service layer or be more specific
+                _logger.warning(f"Mercury MES rate_shipment: get_freight_charge returned None for order {order.name}")
                 return {
                     'success': False,
                     'price': 0.0,
@@ -44,15 +63,14 @@ class DeliveryCarrier(models.Model):
                     'warning_message': False
                 }
         except Exception as e:
-            _logger.error(f"Mercury MES Rate Shipment Error: {e}")
+            _logger.error(f"Mercury MES Rate Shipment Error for Order {order.name}: {e}", exc_info=True)
             return {
                 'success': False,
                 'price': 0.0,
-                'error_message': str(e),
+                'error_message': str(e), # Consider user-friendly message
                 'warning_message': False
             }
 
-    # Override the method to send shipment based on the selected delivery type
     def mercury_mes_send_shipping(self, pickings):
         """Book the shipment using Mercury MES API."""
         service = self.env['mercury.mes.service']
@@ -63,44 +81,53 @@ class DeliveryCarrier(models.Model):
                 if res:
                     # res should contain 'rate' and 'waybills' (list)
                     # Assuming one waybill per picking for simplicity
-                    waybill = res.get('waybills', [None])[0] if res.get('waybills') else None
-                    if waybill:
+                    waybills = res.get('waybills', [])
+                    if waybills:
+                        # Use the first waybill. Handle multiple if needed differently.
+                        waybill = waybills[0]
                         # Store the waybill on the picking
                         picking.carrier_tracking_ref = waybill
                         result.append({
                             'exact_price': res.get('rate', 0.0),
                             'tracking_number': waybill
                         })
+                        # Log additional waybills if any
+                        if len(waybills) > 1:
+                             _logger.info(f"Mercury MES booking for Picking {picking.name} returned multiple waybills: {waybills}")
                     else:
-                        raise UserError(_("Mercury MES booking failed, no waybill returned."))
+                        error_msg = _("Mercury MES booking failed, no waybill returned.")
+                        _logger.error(error_msg)
+                        raise UserError(error_msg)
                 else:
-                     raise UserError(_("Mercury MES booking failed. Please check logs."))
+                    error_msg = _("Mercury MES booking failed. Please check logs.")
+                    _logger.error(error_msg)
+                    raise UserError(error_msg)
             except Exception as e:
-                 _logger.error(f"Mercury MES Send Shipment Error for Picking {picking.name}: {e}")
-                 raise UserError(_("Mercury MES booking error: %s") % str(e)) from e
+                 _logger.error(f"Mercury MES Send Shipment Error for Picking {picking.name}: {e}", exc_info=True)
+                 # Re-raise the exception to stop the process and show error to user
+                 raise UserError(_("Mercury MES booking error for Picking %s: %s") % (picking.name, str(e))) from e
         return result
 
-    # Override the method to cancel shipment (if supported by API)
     def mercury_mes_cancel_shipment(self, picking):
         """Cancel shipment (if API supports it)."""
         # Implement if Mercury MES has a cancel API
         # For now, just log and return a message
         _logger.info(f"Mercury MES Cancel Shipment requested for Picking {picking.name}. API cancellation not implemented.")
-        return "Cancel API not implemented for Mercury MES. Please cancel manually in MES."
+        # Returning a string message is standard for cancel methods
+        return _("Cancel API not implemented for Mercury MES. Please cancel manually in MES.")
 
-    # Override the method to get tracking link
     def mercury_mes_get_tracking_link(self, picking):
         """Provide a link to track the shipment."""
         # Construct the tracking URL based on MES documentation or portal
         # Example (replace with actual MES tracking URL if different):
         tracking_ref = picking.carrier_tracking_ref
         if tracking_ref:
-            # Assuming tracking is done on the MES server directly
-            # You might need to adjust this URL pattern
+            # Assuming tracking is done on the MES server directly using the status endpoint
+            # You might need to adjust this URL pattern or use the details endpoint
             return f"http://116.202.29.37/quotation1/app/getshipmenttracking/wbid/{tracking_ref}"
-        return False
+        return False # Return False if no tracking ref
 
-    # --- Optional: Methods for manual actions ---
+    # --- Optional: Methods for manual actions in the UI ---
     def action_mercury_mes_get_label(self):
         """Action to fetch label (could be implemented later)."""
         # This would involve calling getwaybilldetails and potentially downloading the image
