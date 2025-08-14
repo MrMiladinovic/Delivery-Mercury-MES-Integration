@@ -279,16 +279,16 @@ class MercuryMessService(models.AbstractModel):
             weight = 0.5
             _logger.info(f"Calculated or configured weight for picking {picking.name} was <= 0. Using default weight: {weight} kg.")
 
-        # Calculate dimensions from products
+        # Calculate dimensions using fallback values to avoid AttributeError
         total_length = total_width = total_height = 0
         total_pieces = 0
-        
+
         for move in picking.move_ids:
             if move.product_id:
-                # Convert to integers to avoid float issues
-                length = int(round(max(0.1, move.product_id.length or 30.0)))
-                width = int(round(max(0.1, move.product_id.width or 20.0)))
-                height = int(round(max(0.1, move.product_id.height or 15.0)))
+                # Safely get dimensions with fallback values - this prevents AttributeError
+                length = int(round(max(0.1, getattr(move.product_id, 'length', 0) or 30.0)))
+                width = int(round(max(0.1, getattr(move.product_id, 'width', 0) or 20.0)))
+                height = int(round(max(0.1, getattr(move.product_id, 'height', 0) or 15.0)))
                 qty = int(round(max(1, move.product_uom_qty)))
                 
                 total_length += length * qty
@@ -310,7 +310,6 @@ class MercuryMessService(models.AbstractModel):
 
         # Calculate declared value
         declared_value = max(0.01, sum(move.product_id.lst_price * move.product_uom_qty for move in picking.move_ids if move.product_id))
-
         # --- Prepare API data structure ---
         token_no = picking.name
         payment_type = "4"  # COD
