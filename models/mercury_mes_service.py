@@ -199,6 +199,7 @@ class MercuryMessService(models.AbstractModel):
         # Often, Odoo uses a 'weight' field on the picking or calculates it.
         # For order, you might sum product weights or use a default package.
         # Important: Ensure weight is > 0
+        # --- FIX: Use move_ids instead of move_lines ---
         weight = order.shipping_weight or sum([(line.product_id.weight * line.product_uom_qty) for line in order.order_line if line.product_id.weight]) or 0.5
         # Ensure weight is positive
         if weight <= 0:
@@ -308,7 +309,8 @@ class MercuryMessService(models.AbstractModel):
         # --- Get package/weight details ---
         # Use picking's computed shipping weight or calculate
         # Important: Ensure weight is > 0
-        weight = picking.shipping_weight or sum([(move.product_id.weight * move.quantity_done) for move in picking.move_lines if move.product_id.weight]) or 0.5
+        # --- FIX: Use move_ids instead of move_lines ---
+        weight = picking.shipping_weight or sum([(move.product_id.weight * move.quantity_done) for move in picking.move_ids if move.product_id.weight]) or 0.5
         if weight <= 0:
             weight = 0.5
             _logger.info(f"Calculated or configured weight for picking {picking.name} was <= 0. Using default weight: {weight} kg.")
@@ -318,9 +320,11 @@ class MercuryMessService(models.AbstractModel):
         width = max(0.1, 20.0)
         height = max(0.1, 15.0)
         # Piece count: Use quantity done, ensure at least 1
-        pieces = max(1, int(sum(move.quantity_done for move in picking.move_lines)))
+        # --- FIX: Use move_ids instead of move_lines ---
+        pieces = max(1, int(sum(move.quantity_done for move in picking.move_ids)))
         # Declared value: Often sum of product values or picking value. Ensure positive.
-        declared_value = max(0.01, sum(move.product_id.lst_price * move.quantity_done for move in picking.move_lines)) # Simplified
+        # --- FIX: Use move_ids instead of move_lines ---
+        declared_value = max(0.01, sum(move.product_id.lst_price * move.quantity_done for move in picking.move_ids)) # Simplified
 
         # --- Prepare API data structure ---
         token_no = picking.name # Use Odoo picking name as unique token

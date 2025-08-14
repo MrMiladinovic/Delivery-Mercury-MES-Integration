@@ -41,15 +41,18 @@ class DeliveryCarrier(models.Model):
     # --- Odoo Delivery Method Overrides ---
 
     def mercury_mes_rate_shipment(self, order):
-   
+        """Calculate the rate using Mercury MES API."""
+        # This will call the service layer
         service = self.env['mercury.mes.service']
         try:
             rate = service.get_freight_charge(self, order)
             if rate is not None:
+                # --- ADD THE LOGGING LINE HERE ---
                 _logger.info(f"Mercury MES Rate Shipment - Calculated Rate: {rate} ZMW for Order {order.name}")
+                # --- END ADDITION ---
                 return {
                     'success': True,
-                    'price': rate,  # Ensure this is the actual rate
+                    'price': rate, # Ensure this is the actual rate from the API
                     'error_message': False,
                     'warning_message': False
                 }
@@ -66,7 +69,7 @@ class DeliveryCarrier(models.Model):
             return {
                 'success': False,
                 'price': 0.0,
-                'error_message': str(e),
+                'error_message': str(e), # Consider user-friendly message
                 'warning_message': False
             }
 
@@ -78,6 +81,9 @@ class DeliveryCarrier(models.Model):
             try:
                 res = service.book_shipment(self, picking)
                 if res:
+                    # Log the response from the API
+                    _logger.info(f"Mercury MES Book Shipment Response for Picking {picking.name}: {res}")
+
                     # res should contain 'rate' and 'waybills' (list)
                     # Assuming one waybill per picking for simplicity
                     waybills = res.get('waybills', [])
@@ -90,6 +96,7 @@ class DeliveryCarrier(models.Model):
                             'exact_price': res.get('rate', 0.0),
                             'tracking_number': waybill
                         })
+                        _logger.info(f"Mercury MES Send Shipping - Stored Waybill: {waybill} for Picking {picking.name}")
                         # Log additional waybills if any
                         if len(waybills) > 1:
                              _logger.info(f"Mercury MES booking for Picking {picking.name} returned multiple waybills: {waybills}")
