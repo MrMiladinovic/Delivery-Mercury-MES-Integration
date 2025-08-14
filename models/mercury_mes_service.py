@@ -380,20 +380,20 @@ class MercuryMessService(models.AbstractModel):
         # Sanitize the entire shipment data
         shipment_data = self.sanitize_numbers(shipment_data)
 
+        
         # --- Prepare API Parameters for Booking ---
-        # KEY FIX 1: Use bookcollection instead of bookcollectioninternational
         data_to_send = {
             'email': email,
             'private_key': private_key,
             'token_no': token_no,
-            # KEY FIX 2: Use domestic_service and international_service as per working curl
+            # Use BOTH service IDs like in the working example
             'domestic_service': carrier.mercury_mes_default_domestic_service or '1',
-            'international_service': carrier.mercury_mes_default_international_service or '4',
-            'insurance': "1" if carrier.mercury_mes_insurance else "0",
-            'shipment': json.dumps([shipment_data])  # Wrap in list as per working example
+            'international_service': carrier.mercury_mes_default_international_service or '4', 
+            'insurance': "1", # Must be "1" like in working example
+            'shipment': json.dumps([shipment_data])
         }
 
-        # KEY FIX 3: Use correct endpoint
+        # Use correct endpoint - bookcollection (like in working example)
         url = f"{MES_API_BASE_URL}/bookcollection"
         
         # --- Log for Debugging ---
