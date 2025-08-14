@@ -15,4 +15,5 @@ Integrate Odoo with Mercury MES for shipping cost calculation and shipment booki
     'installable': True,
     'application': False, # Set to True if it's a major app
     'auto_install': False,
+    'license': 'Other proprietary',
 }

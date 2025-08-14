@@ -108,4 +108,4 @@ class DeliveryCarrier(models.Model):
 
     def action_mercury_mes_get_tracking_info(self):
         """Action to fetch detailed tracking (could be implemented later)."""
-         raise UserError(_("Fetching detailed tracking is not yet implemented."))
+        raise UserError(_("Fetching detailed tracking is not yet implemented."))

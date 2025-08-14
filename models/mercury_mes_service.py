@@ -73,7 +73,7 @@ class MercuryMessService(models.AbstractModel):
          # You might store MES ID as a field on res.country.state
          # Or use a mapping dictionary like country.
          # Placeholder:
-         if state_record:
+        if state_record:
              # Assume you have a field `mes_state_id` on res.country.state
              # return state_record.mes_state_id or state_record.name
              # For prototype, let's assume a simple name match or hardcoded map
@@ -83,7 +83,7 @@ class MercuryMessService(models.AbstractModel):
                  # ... Add others ...
              }
              return zm_state_map.get(state_record.name, "")
-         return ""
+        return ""
 
     def _map_odoo_city_to_mes_id(self, city_name):
         """ Map Odoo city (for Zambia) to MES city ID. """
