@@ -390,7 +390,7 @@ class MercuryMessService(models.AbstractModel):
             'token_no': token_no, # Must be unique
             # Send BOTH service IDs as per the API documentation example for bookcollectioninternational (p. 8)
             'domestic_service': carrier.mercury_mes_default_domestic_service,      # e.g., 1
-            'international_service': carrier.mercury_mes_default_international_service, # e.g., 4 (Same as getfreight)
+            'international_service': 5, # e.g., 4 (Same as getfreight)
             'insurance': "0", # Simplified, make configurable if needed
             'shipment': json.dumps([shipment_data]) # Wrap in list and convert to JSON string as per API example
         }
