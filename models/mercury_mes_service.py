@@ -388,10 +388,9 @@ class MercuryMessService(models.AbstractModel):
             'email': email,
             'private_key': private_key,
             'token_no': token_no, # Must be unique
-            # Based on the API documentation example for Book Collection (p. 8) and current error (509),
-            # send only the international_service parameter.
-            # The API should determine if it's domestic or international based on shipment data.
-            'international_service': carrier.mercury_mes_default_international_service, # Use configured international service ID (e.g., 4 or 5)
+            # Send BOTH service IDs as per the API documentation example for bookcollectioninternational (p. 8)
+            'domestic_service': carrier.mercury_mes_default_domestic_service,      # e.g., 1
+            'international_service': carrier.mercury_mes_default_international_service, # e.g., 4 (Same as getfreight)
             'insurance': "0", # Simplified, make configurable if needed
             'shipment': json.dumps([shipment_data]) # Wrap in list and convert to JSON string as per API example
         }
