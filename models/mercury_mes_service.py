@@ -23,14 +23,10 @@ class MercuryMessService(models.AbstractModel):
         return email, private_key
 
     def _get_country_state_city_ids(self, partner):
-        """Map Odoo partner address to MES IDs/names.
-        For Zambia (ID 3): Return Country ID, State ID, City ID.
-        For Other Countries: Return Country ID, State Name, City Name.
-        """
-        # --- Get Address IDs/Names ---
+        """Map Odoo partner address to MES IDs/names."""
         country_id = partner.country_id
         state_id = partner.state_id
-        state_name = state_id.name if state_id else ""
+        state_name = state_id.name if state_id else (partner.state_id.name if partner.state_id else "")
         city_name = partner.city or ""
 
         mes_country_id = self._map_odoo_country_to_mes(country_id)
@@ -40,28 +36,24 @@ class MercuryMessService(models.AbstractModel):
         mes_state_id_or_name = ""
         mes_city_id_or_name = ""
 
-        if mes_country_id == 3: # Zambia
-            # --- Map State and City for Zambia ---
+        if mes_country_id == 3:  # Zambia - Use IDs
+            # Map State and City for Zambia
             if state_id:
                 mes_state_id_or_name = self._map_odoo_state_to_mes_id(state_id)
             else:
-                _logger.warning(f"Odoo Partner {partner.name} (ID: {partner.id}) has no res.country.state record for Zambia.")
-                mes_state_id_or_name = "1" # Default to Lusaka
+                mes_state_id_or_name = "1"  # Default to Lusaka
 
             # Handle city mapping for Zambia
             if not city_name:
-                _logger.warning(f"Odoo Partner {partner.name} (ID: {partner.id}) has no city set.")
-                mes_city_id_or_name = "1" # Default to Lusaka
+                mes_city_id_or_name = "1"  # Default to Lusaka
             else:
                 mes_city_id_or_name = self._map_odoo_city_to_mes_id(city_name)
                 if not mes_city_id_or_name:
-                    _logger.warning(f"Could not map Odoo city '{city_name}' to MES city ID for Zambia partner {partner.name}.")
-                    mes_city_id_or_name = "1" # Default to Lusaka
+                    mes_city_id_or_name = "1"  # Default to Lusaka
 
-        else:
-            # --- Use Names for Non-Zambia ---
-            mes_state_id_or_name = state_name if state_name else ""
-            mes_city_id_or_name = city_name if city_name else ""
+        else:  # Non-Zambia countries - Use Names
+            mes_state_id_or_name = state_name if state_name else "Unknown State"
+            mes_city_id_or_name = city_name if city_name else "Unknown City"
 
         return mes_country_id, mes_state_id_or_name, mes_city_id_or_name
 
