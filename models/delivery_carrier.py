@@ -112,7 +112,7 @@ class DeliveryCarrier(models.Model):
                         
                         # Store the waybill and rate on the picking
                         picking.carrier_tracking_ref = waybill
-                        picking.delivery_price = float(rate)
+                        picking.carrier_price = float(rate)  # FIXED: Use carrier_price instead of delivery_price
                         
                         result.append({
                             'exact_price': float(rate),
@@ -124,7 +124,7 @@ class DeliveryCarrier(models.Model):
                         if len(waybills) > 1:
                             _logger.info(f"Mercury MES booking for Picking {picking.name} returned multiple waybills: {waybills}")
                     else:
-                        # Handle case where we get rate but no waybill (as per your working test)
+                        # Handle case where we get rate but no waybill
                         if rate > 0:
                             _logger.warning(f"Mercury MES booking for Picking {picking.name} returned rate {rate} but no waybill")
                             # Still consider successful if we have rate
@@ -147,7 +147,7 @@ class DeliveryCarrier(models.Model):
             except Exception as e:
                 _logger.error(f"Mercury MES Send Shipment Error for Picking {picking.name}: {e}", exc_info=True)
                 raise UserError(_("Mercury MES booking error for Picking %s: %s") % (picking.name, str(e))) from e
-                
+                    
         return result
 
     def mercury_mes_cancel_shipment(self, picking):
