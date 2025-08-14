@@ -27,7 +27,7 @@ class DeliveryCarrier(models.Model):
     )
     mercury_mes_default_international_service = fields.Integer(
         string="Default International Service ID",
-        default=5, # As per API doc default for Book Collection
+        default=5, # As per API doc default
         help="Default service ID for international shipments."
     )
     mercury_mes_default_domestic_service = fields.Integer(
