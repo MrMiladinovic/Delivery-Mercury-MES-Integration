@@ -6,8 +6,10 @@
             <field name="model">delivery.carrier</field>
             <field name="inherit_id" ref="delivery.view_delivery_carrier_form"/>
             <field name="arch" type="xml">
-                <xpath expr="//page[@name='delivery_type']/group" position="inside">
-                    <group name="mercury_mes" string="Mercury MES Configuration" attrs="{'invisible': [('delivery_type', '!=', 'mercury_mes')]}">
+                <!-- Target the sheet element inside the form -->
+                <xpath expr="//sheet" position="inside">
+                    <!-- Add the Mercury MES group, make it visible only when delivery_type is 'mercury_mes' -->
+                    <group name="mercury_mes_config" string="Mercury MES Configuration" attrs="{'invisible': [('delivery_type', '!=', 'mercury_mes')]}">
                         <field name="mercury_mes_email" />
                         <field name="mercury_mes_private_key" password="True"/>
                         <field name="mercury_mes_default_international_service" />
