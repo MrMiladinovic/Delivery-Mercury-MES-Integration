@@ -41,20 +41,19 @@ class DeliveryCarrier(models.Model):
     # --- Odoo Delivery Method Overrides ---
 
     def mercury_mes_rate_shipment(self, order):
-        """Calculate the rate using Mercury MES API."""
-        # This will call the service layer
+   
         service = self.env['mercury.mes.service']
         try:
             rate = service.get_freight_charge(self, order)
             if rate is not None:
+                _logger.info(f"Mercury MES Rate Shipment - Calculated Rate: {rate} ZMW for Order {order.name}")
                 return {
                     'success': True,
-                    'price': rate,
+                    'price': rate,  # Ensure this is the actual rate
                     'error_message': False,
                     'warning_message': False
                 }
             else:
-                # Error message should ideally come from the service layer or be more specific
                 _logger.warning(f"Mercury MES rate_shipment: get_freight_charge returned None for order {order.name}")
                 return {
                     'success': False,
@@ -67,7 +66,7 @@ class DeliveryCarrier(models.Model):
             return {
                 'success': False,
                 'price': 0.0,
-                'error_message': str(e), # Consider user-friendly message
+                'error_message': str(e),
                 'warning_message': False
             }
 
