@@ -309,8 +309,8 @@ class MercuryMessService(models.AbstractModel):
         # --- Get package/weight details ---
         # Use picking's computed shipping weight or calculate
         # Important: Ensure weight is > 0
-        # --- FIX: Use move_ids instead of move_lines ---
-        weight = picking.shipping_weight or sum([(move.product_id.weight * move.quantity_done) for move in picking.move_ids if move.product_id.weight]) or 0.5
+        # --- FIX: Use move_ids instead of move_lines and product_uom_qty instead of quantity_done ---
+        weight = picking.shipping_weight or sum([(move.product_id.weight * move.product_uom_qty) for move in picking.move_ids if move.product_id.weight]) or 0.5
         if weight <= 0:
             weight = 0.5
             _logger.info(f"Calculated or configured weight for picking {picking.name} was <= 0. Using default weight: {weight} kg.")
@@ -319,18 +319,18 @@ class MercuryMessService(models.AbstractModel):
         length = max(0.1, 30.0)
         width = max(0.1, 20.0)
         height = max(0.1, 15.0)
-        # Piece count: Use quantity done, ensure at least 1
-        # --- FIX: Use move_ids instead of move_lines ---
-        pieces = max(1, int(sum(move.quantity_done for move in picking.move_ids)))
+        # Piece count: Use total quantity, ensure at least 1
+        # --- FIX: Use move_ids instead of move_lines and product_uom_qty instead of quantity_done ---
+        pieces = max(1, int(sum(move.product_uom_qty for move in picking.move_ids)))
         # Declared value: Often sum of product values or picking value. Ensure positive.
-        # --- FIX: Use move_ids instead of move_lines ---
-        declared_value = max(0.01, sum(move.product_id.lst_price * move.quantity_done for move in picking.move_ids)) # Simplified
+        # --- FIX: Use move_ids instead of move_lines and product_uom_qty instead of quantity_done ---
+        declared_value = max(0.01, sum(move.product_id.lst_price * move.product_uom_qty for move in picking.move_ids)) # Simplified
 
         # --- Prepare API data structure ---
         token_no = picking.name # Use Odoo picking name as unique token
         # Payment type: Often COD (4) for sales orders, Prepaid (2/3) for internal
         # Simplified: Assume COD for now, make configurable
-        payment_type = "4"
+        payment_type = "4" # COD
 
         sender_info = {
             "s_first_name": sender.name.split(' ')[0] if sender.name else "",
@@ -388,19 +388,22 @@ class MercuryMessService(models.AbstractModel):
             'email': email,
             'private_key': private_key,
             'token_no': token_no, # Must be unique
-            # Book Collection example (p. 8) uses only international_service.
+            # Book Collection example (p. 8) uses international_service.
             # It's unclear if domestic shipments use a different endpoint or parameter.
             # Let's assume for now it uses international_service param for all.
             # If domestic booking fails, we might need logic to determine the correct service param.
-            'international_service': carrier.mercury_mes_default_international_service,
-            'insurance': "0", # Simplified, make configurable
+            'international_service': carrier.mercury_mes_default_international_service, # Use configured international service ID
+            'insurance': "0", # Simplified, make configurable if needed
             'shipment': json.dumps([shipment_data]) # Wrap in list and convert to JSON string as per API example
         }
 
         url = f"{MES_API_BASE_URL}/bookcollectioninternational"
         # --- Log for Debugging ---
         _logger.info(f"Mercury MES Book Shipment - Request URL: {url}")
-        _logger.info(f"Mercury MES Book Shipment - Request Data: {data_to_send}")
+        # Avoid logging sensitive data like private_key if possible, but log structure
+        logged_data = data_to_send.copy()
+        logged_data['private_key'] = '***REDACTED***'
+        _logger.info(f"Mercury MES Book Shipment - Request Data (sensitive fields redacted): {logged_data}")
         _logger.info(f"Mercury MES Book Shipment - Shipment Data Sent: {shipment_data}")
 
         try:
